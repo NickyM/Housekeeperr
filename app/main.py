@@ -121,7 +121,7 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
     deleted = await sonarr.delete_episode_files(sorted(file_ids))
     return {"deleted_files": deleted, "deleted_episodes": matched_eps}
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 db.init()
 
