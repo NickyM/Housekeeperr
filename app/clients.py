@@ -555,7 +555,9 @@ class JellyfinClient:
             return list(agg.values())
 
     async def ping(self) -> dict[str, Any]:
-        return await _ping(f"{self.base}/System/Info/Public", headers=self._headers())
+        # /System/Info (not /Public) requires auth, so a bad API key surfaces
+        # as HTTP 401 instead of a misleading 200.
+        return await _ping(f"{self.base}/System/Info", headers=self._headers())
 
 
 # ---------------- Seerr (formerly Overseerr / Jellyseerr) --------------------
@@ -586,8 +588,14 @@ class SeerrClient:
                 or "unknown")
 
     async def request_index(self) -> dict[str, dict[str, list[str]]]:
-        """Walk all requests and return {'movie': {tmdb_id: [requesters]},
-                                        'tv':    {tmdb_id: [requesters]}}."""
+        """Walk every request (any status, any user) and return
+        {'movie': {tmdb_id: [requesters]}, 'tv': {tmdb_id: [requesters]}}.
+
+        Robust against three observed response shapes:
+          (a) {"results":[...], "pageInfo":{"results":N}}  — Overseerr/Jellyseerr
+          (b) bare list [...]                              — older builds
+          (c) missing pageInfo                             — some forks
+        """
         out: dict[str, dict[str, list[str]]] = {"movie": {}, "tv": {}}
         page_size = 100
         skip = 0
@@ -596,11 +604,24 @@ class SeerrClient:
                 r = await c.get(
                     f"{self.base}/api/v1/request",
                     headers=self._headers(),
-                    params={"take": page_size, "skip": skip, "sort": "added"},
+                    params={
+                        "take": page_size, "skip": skip,
+                        "sort": "added", "filter": "all",
+                    },
                 )
                 r.raise_for_status()
-                data = r.json() or {}
-                items = data.get("results") or []
+                data = r.json()
+                if isinstance(data, list):
+                    items = data
+                    total: int | None = None
+                elif isinstance(data, dict):
+                    items = data.get("results") or []
+                    page_info = data.get("pageInfo") or {}
+                    total = int(page_info.get("results")) if page_info.get("results") is not None else None
+                else:
+                    items = []
+                    total = 0
+
                 for req in items:
                     media = req.get("media") or {}
                     media_type = media.get("mediaType") or req.get("type")
@@ -612,12 +633,25 @@ class SeerrClient:
                     key = str(tmdb_id)
                     if name not in bucket.setdefault(key, []):
                         bucket[key].append(name)
-                page_info = data.get("pageInfo") or {}
-                total = int(page_info.get("results") or 0)
+
+                if not items:
+                    break
                 skip += len(items)
-                if not items or skip >= total:
+                if total is not None and skip >= total:
+                    break
+                if len(items) < page_size:
+                    # Last page (server returned fewer than asked for)
                     break
         return out
 
     async def ping(self) -> dict[str, Any]:
-        return await _ping(f"{self.base}/api/v1/status", headers=self._headers())
+        # /api/v1/auth/me requires auth (validates the API key).
+        # /api/v1/status is unauthenticated and would falsely report OK on a
+        # bad key. Fall back to it only if auth/me 404s (older builds).
+        res = await _ping(f"{self.base}/api/v1/auth/me", headers=self._headers())
+        if res.get("ok") or res.get("status") in (401, 403):
+            return res
+        if res.get("status") == 404:
+            return await _ping(f"{self.base}/api/v1/status",
+                               headers=self._headers())
+        return res

@@ -34,9 +34,12 @@ with bulk ignore / delete.
   `titleSlug`.
 - 🛠️ Configure everything (Radarr/Sonarr/Plex URLs + API keys, region,
   providers) from the web UI. No config files to edit.
-- 💾 All state — config, ignore list, scan cache — lives in a single SQLite
-  file at `/data/housekeeper.db`. Mount it as a volume and everything
-  persists across restarts and image upgrades.
+- 💾 All state — config, ignore list, scan cache, **TMDB watch-provider
+  cache** — lives in a single SQLite file at `/data/housekeeper.db`. Mount
+  it as a volume and everything persists across restarts and image
+  upgrades. The TMDB cache has a 24-hour TTL per title and stores the full
+  per-region response, so re-scans within a day are nearly free and don't
+  re-hit TMDB.
 
 ## Quick start (Docker)
 
@@ -188,7 +191,13 @@ Use `http://host:7878/radarr` (or whatever base you configured).
 
 **TMDB rate limits / scan is slow**
 The scanner runs 8 TMDB lookups in parallel. A library of 2 000 items
-typically completes in under a minute.
+typically completes in under a minute. Subsequent scans within 24 hours
+hit the local SQLite cache and skip TMDB entirely.
+
+**"OK (HTTP 200)" for a wrong API key?**
+Fixed — Jellyfin and Seerr tests now hit auth-required endpoints
+(`/System/Info` and `/api/v1/auth/me` respectively), so a bad key
+returns `FAIL — HTTP 401` instead of misleading you.
 
 **Plex matches are missing**
 Plex matching needs a valid GUID on the Plex item. The scanner handles both

@@ -126,13 +126,17 @@ async def _process_batch(items: list[dict[str, Any]], kind: str, source: str,
                 providers_ids: list[int] = []
                 provider_names: list[str] = []
                 if tmdb_id:
-                    try:
-                        results = await tmdb.watch_providers(kind, tmdb_id, client)
+                    results = db.get_tmdb_cache(kind, int(tmdb_id))
+                    if results is None:
+                        try:
+                            results = await tmdb.watch_providers(kind, tmdb_id, client)
+                            db.set_tmdb_cache(kind, int(tmdb_id), results)
+                        except Exception:
+                            results = {}
+                    if results:
                         providers_ids, provider_names = _extract_providers(
                             results, region, wanted
                         )
-                    except Exception:
-                        providers_ids, provider_names = [], []
 
                 size = _radarr_size(it) if source == "radarr" else _sonarr_size(it)
                 slug = it.get("titleSlug") or ""
@@ -236,6 +240,9 @@ async def run_scan() -> None:
             db.set_scan_status(phase="seerr")
             try:
                 req_idx = await SeerrClient(cfg["seerr_url"], cfg["seerr_api_key"]).request_index()
+                n = (len(req_idx.get("movie") or {})
+                     + len(req_idx.get("tv") or {})) if req_idx else 0
+                db.set_scan_status(phase=f"seerr ({n} requested titles)")
             except Exception as e:
                 db.set_scan_status(error=f"Seerr fetch failed: {e}")
 

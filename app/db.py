@@ -73,6 +73,14 @@ def init() -> None:
                 error      TEXT
             );
             INSERT OR IGNORE INTO scan_status (id, running) VALUES (1, 0);
+
+            CREATE TABLE IF NOT EXISTS tmdb_cache (
+                kind TEXT NOT NULL,                 -- 'movie' | 'tv'
+                tmdb_id INTEGER NOT NULL,
+                response_json TEXT NOT NULL,        -- full /watch/providers result (all regions)
+                fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (kind, tmdb_id)
+            );
             """
         )
         # Lightweight column migration for existing DBs
@@ -301,3 +309,51 @@ def get_scan_status() -> dict[str, Any]:
     with _lock:
         row = _conn.execute("SELECT * FROM scan_status WHERE id=1").fetchone()
     return dict(row) if row else {}
+
+
+# ---- TMDB watch-providers cache (24h default) -------------------------------
+
+def get_tmdb_cache(kind: str, tmdb_id: int,
+                   max_age_seconds: int = 24 * 3600) -> dict[str, Any] | None:
+    """Return the cached watch_providers response (all regions) if still
+    fresh, else None. Cached responses store the full TMDB result so they
+    work across region changes without re-fetching."""
+    with _lock:
+        row = _conn.execute(
+            "SELECT response_json, "
+            "       CAST((julianday('now') - julianday(fetched_at)) * 86400 AS INTEGER) AS age "
+            "FROM tmdb_cache WHERE kind=? AND tmdb_id=?",
+            (kind, int(tmdb_id)),
+        ).fetchone()
+    if not row:
+        return None
+    if row["age"] is None or row["age"] > max_age_seconds:
+        return None
+    try:
+        return json.loads(row["response_json"])
+    except json.JSONDecodeError:
+        return None
+
+
+def set_tmdb_cache(kind: str, tmdb_id: int, response: dict[str, Any]) -> None:
+    with _lock, _conn:
+        _conn.execute(
+            "INSERT INTO tmdb_cache (kind, tmdb_id, response_json, fetched_at) "
+            "VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(kind, tmdb_id) DO UPDATE SET "
+            "  response_json=excluded.response_json, "
+            "  fetched_at=excluded.fetched_at",
+            (kind, int(tmdb_id), json.dumps(response)),
+        )
+
+
+def tmdb_cache_stats() -> dict[str, int]:
+    """Diagnostic: count of cached responses and how many are fresh."""
+    with _lock:
+        row = _conn.execute(
+            "SELECT "
+            "  COUNT(*) AS total, "
+            "  COUNT(CASE WHEN (julianday('now') - julianday(fetched_at)) * 86400 <= 86400 THEN 1 END) AS fresh "
+            "FROM tmdb_cache"
+        ).fetchone()
+    return {"total": int(row["total"] or 0), "fresh": int(row["fresh"] or 0)}
