@@ -1,5 +1,6 @@
 """Render Housekeeperr logo variants as PNGs from the same primitives as
-static/favicon.svg. Run after editing the SVG to refresh raster outputs:
+static/favicon.svg (orange-on-black Swiffer-style duster). Run after
+editing the SVG to refresh raster outputs:
 
     python scripts/render_logo.py
 """
@@ -10,43 +11,71 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 
-BG = (15, 23, 42, 255)        # #0f172a
-HOUSE = (77, 156, 246, 255)   # #4d9cf6
-TEXT = (230, 237, 243, 255)   # #e6edf3
-MUTED = (139, 148, 158, 255)  # #8b949e
+BG = (0, 0, 0, 255)              # pure black
+ACCENT = (249, 115, 22, 255)     # orange-500   #f97316
+ACCENT_DEEP = (194, 65, 12, 255) # orange-700   #c2410c
+TEXT = (245, 245, 245, 255)      # almost white
+MUTED = (154, 154, 154, 255)     # neutral grey
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _house_polygon(scale: float, offset: tuple[float, float] = (0, 0)) -> list[tuple[float, float]]:
-    # Matches static/favicon.svg viewBox 0..512
-    base = [(256, 96), (96, 232), (96, 424), (416, 424), (416, 232)]
-    ox, oy = offset
-    return [(x * scale + ox, y * scale + oy) for x, y in base]
+def _thick_line(d: ImageDraw.ImageDraw, x1: float, y1: float, x2: float, y2: float,
+                width: int, color: tuple[int, int, int, int]) -> None:
+    """Pillow's line() doesn't do rounded caps; emulate with end-circles."""
+    d.line((x1, y1, x2, y2), fill=color, width=width)
+    r = width // 2
+    d.ellipse((x1 - r, y1 - r, x1 + r, y1 + r), fill=color)
+    d.ellipse((x2 - r, y2 - r, x2 + r, y2 + r), fill=color)
 
 
-def _play_polygon(scale: float, offset: tuple[float, float] = (0, 0)) -> list[tuple[float, float]]:
-    base = [(218, 268), (340, 332), (218, 396)]
-    ox, oy = offset
-    return [(x * scale + ox, y * scale + oy) for x, y in base]
+# SVG strand endpoints, in 512-unit coords. All originate at (256, 252).
+_STRANDS = [
+    (256, 74),
+    (232, 80), (280, 80),
+    (206, 94), (306, 94),
+    (178, 116), (334, 116),
+    (148, 146), (364, 146),
+    (122, 184), (390, 184),
+]
 
 
 def _square_logo(size: int) -> Image.Image:
+    """Rendered version of static/favicon.svg at the requested size."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    radius = int(size * (96 / 512))
+    s = size / 512
+    radius = int(96 * s)
     d.rounded_rectangle((0, 0, size, size), radius=radius, fill=BG)
-    scale = size / 512
-    d.polygon(_house_polygon(scale), fill=HOUSE)
-    d.polygon(_play_polygon(scale), fill=BG)
+
+    stroke_w = max(2, int(18 * s))
+    base_x, base_y = 256 * s, 252 * s
+    for tx, ty in _STRANDS:
+        _thick_line(d, base_x, base_y, tx * s, ty * s, stroke_w, ACCENT)
+
+    # chunky clip head
+    d.rounded_rectangle(
+        (208 * s, 244 * s, (208 + 96) * s, (244 + 28) * s),
+        radius=int(9 * s), fill=ACCENT,
+    )
+    # ferrule
+    d.rounded_rectangle(
+        (222 * s, 268 * s, (222 + 68) * s, (268 + 14) * s),
+        radius=int(4 * s), fill=ACCENT_DEEP,
+    )
+    # handle
+    d.rounded_rectangle(
+        (246 * s, 280 * s, (246 + 20) * s, (280 + 166) * s),
+        radius=int(10 * s), fill=ACCENT,
+    )
     return img
 
 
 def _find_font(size: int) -> ImageFont.FreeTypeFont:
     candidates = [
-        "C:/Windows/Fonts/segoeuib.ttf",   # Segoe UI Bold
-        "C:/Windows/Fonts/seguisb.ttf",    # Segoe UI Semibold
-        "C:/Windows/Fonts/arialbd.ttf",    # Arial Bold
+        "C:/Windows/Fonts/segoeuib.ttf",
+        "C:/Windows/Fonts/seguisb.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
         "C:/Windows/Fonts/Arial.ttf",
     ]
     for path in candidates:
@@ -62,7 +91,6 @@ def _social_preview(width: int = 1280, height: int = 640) -> Image.Image:
     img = Image.new("RGBA", (width, height), BG)
     d = ImageDraw.Draw(img)
 
-    # Logo block on the left
     logo_size = 320
     logo = _square_logo(logo_size)
     logo_y = (height - logo_size) // 2
@@ -88,8 +116,7 @@ def _social_preview(width: int = 1280, height: int = 640) -> Image.Image:
 
     badge_font = _find_font(24)
     badge = "github.com/NickyM/Housekeeperr"
-    d.text((text_x, logo_y + logo_size - 24), badge, font=badge_font, fill=HOUSE)
-
+    d.text((text_x, logo_y + logo_size - 24), badge, font=badge_font, fill=ACCENT)
     return img
 
 
@@ -99,11 +126,9 @@ def main() -> None:
     static_dir.mkdir(exist_ok=True)
     assets_dir.mkdir(exist_ok=True)
 
-    # Small square logo for README header
     small = _square_logo(512)
     small.save(static_dir / "logo.png", optimize=True)
 
-    # Social preview for GitHub repo settings
     social = _social_preview()
     social.save(assets_dir / "social-preview.png", optimize=True)
 

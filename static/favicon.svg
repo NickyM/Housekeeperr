@@ -1,6 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Housekeeperr">
   <title>Housekeeperr</title>
-  <rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <path d="M256 96 L96 232 L96 408 Q96 424 112 424 L400 424 Q416 424 416 408 L416 232 Z" fill="#4d9cf6"/>
-  <path d="M218 268 L340 332 L218 396 Z" fill="#0f172a"/>
+  <rect width="512" height="512" rx="96" fill="#000000"/>
+
+  <!-- swiffer-style dense fluffy fan: 11 strands radiating from clip -->
+  <g stroke="#f97316" stroke-width="18" stroke-linecap="round" fill="none">
+    <line x1="256" y1="252" x2="256" y2="74"/>
+    <line x1="256" y1="252" x2="232" y2="80"/>
+    <line x1="256" y1="252" x2="280" y2="80"/>
+    <line x1="256" y1="252" x2="206" y2="94"/>
+    <line x1="256" y1="252" x2="306" y2="94"/>
+    <line x1="256" y1="252" x2="178" y2="116"/>
+    <line x1="256" y1="252" x2="334" y2="116"/>
+    <line x1="256" y1="252" x2="148" y2="146"/>
+    <line x1="256" y1="252" x2="364" y2="146"/>
+    <line x1="256" y1="252" x2="122" y2="184"/>
+    <line x1="256" y1="252" x2="390" y2="184"/>
+  </g>
+
+  <!-- chunky clip head (silhouette-defining piece) -->
+  <rect x="208" y="244" width="96" height="28" rx="9" fill="#f97316"/>
+
+  <!-- ferrule band -->
+  <rect x="222" y="268" width="68" height="14" rx="4" fill="#c2410c"/>
+
+  <!-- handle -->
+  <rect x="246" y="280" width="20" height="166" rx="10" fill="#f97316"/>
 </svg>
