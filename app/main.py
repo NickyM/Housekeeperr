@@ -121,9 +121,16 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
     deleted = await sonarr.delete_episode_files(sorted(file_ids))
     return {"deleted_files": deleted, "deleted_episodes": matched_eps}
 
+VERSION = "0.1.0"
+
 db.init()
 
-app = FastAPI(title="Housekeeperr", docs_url="/api/docs")
+app = FastAPI(title="Housekeeperr", version=VERSION, docs_url="/api/docs")
+
+
+@app.get("/api/version")
+async def version() -> dict[str, str]:
+    return {"version": VERSION}
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -139,6 +146,11 @@ async def index() -> FileResponse:
 @app.get("/settings")
 async def settings_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "settings.html")
+
+
+@app.get("/about")
+async def about_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "about.html")
 
 
 # ----- Config -----------------------------------------------------------------

@@ -119,6 +119,10 @@ controls where the SQLite database is stored.
 | Region | | Country to check streaming availability in |
 | Providers | | Pick the services to flag (Netflix, Disney+, etc.) |
 
+An **About** page at `/about` links back to the repo, issue tracker,
+container image, license and the upstream tools — useful when sharing
+or troubleshooting.
+
 After saving, click **Scan now** in the top bar. The scan fetches every
 Radarr/Sonarr title, looks up its streaming providers on TMDB, pulls watch
 state from Plex/Jellyfin in parallel, and pulls request history from
