@@ -85,6 +85,7 @@ label { color: var(--muted); display: block; margin-bottom: 4px; font-size: 12px
 .tag.disney { background: #131a32; color: #bcc8ff; border-color: #2a3a86; }
 .tag.watched { background: #14271b; color: #a4e4bb; border-color: #295c3c; }
 .tag.inprogress { background: #2a2415; color: #f0d795; border-color: #61521e; }
+.tag.requested { background: #221a2c; color: #d9b8ff; border-color: #4c2f70; }
 .card .actions { display: flex; gap: 6px; margin-top: auto; flex-wrap: wrap; }
 .card .actions button, .card .actions a { padding: 6px 10px; font-size: 12px; flex: 1 1 auto; text-align: center; }
 

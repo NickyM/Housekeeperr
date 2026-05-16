@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Housekeeper — Settings</title>
+  <title>Housekeeperr — Settings</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header>
-    <h1>Housekeeper</h1>
+    <h1>Housekeeperr</h1>
     <nav>
       <a href="/">Library</a>
       <a href="/settings" class="active">Settings</a>
@@ -37,7 +37,7 @@
         <input type="password" id="sonarr_api_key" autocomplete="off" />
       </div>
 
-      <h2>Plex <span style="color:var(--muted); font-weight:normal; font-size:13px;">(optional)</span></h2>
+      <h2>Plex <span style="color:var(--muted); font-weight:normal; font-size:13px;">(optional — watch state source)</span></h2>
       <div>
         <label for="plex_url">URL</label>
         <input type="text" id="plex_url" placeholder="http://localhost:32400" />
@@ -45,6 +45,30 @@
       <div>
         <label for="plex_token">X-Plex-Token — <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noopener" style="color:var(--accent)">how to find it</a></label>
         <input type="password" id="plex_token" autocomplete="off" />
+      </div>
+
+      <h2>Jellyfin <span style="color:var(--muted); font-weight:normal; font-size:13px;">(optional — watch state source; combine with Plex if you use both)</span></h2>
+      <div>
+        <label for="jellyfin_url">URL</label>
+        <input type="text" id="jellyfin_url" placeholder="http://localhost:8096" />
+      </div>
+      <div>
+        <label for="jellyfin_api_key">API key — Dashboard → Advanced → API Keys</label>
+        <input type="password" id="jellyfin_api_key" autocomplete="off" />
+      </div>
+      <div class="full">
+        <label for="jellyfin_user_id">User ID (optional) — leave blank to aggregate watch state across all non-hidden users</label>
+        <input type="text" id="jellyfin_user_id" placeholder="GUID from Dashboard → Users → (user) → URL bar" style="width:100%; max-width:none;" />
+      </div>
+
+      <h2><a href="https://github.com/seerr-team/seerr" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">Seerr</a> <span style="color:var(--muted); font-weight:normal; font-size:13px;">(optional — tag items with who requested them; also works with legacy Overseerr / Jellyseerr installs)</span></h2>
+      <div>
+        <label for="seerr_url">URL</label>
+        <input type="text" id="seerr_url" placeholder="http://localhost:5055" />
+      </div>
+      <div>
+        <label for="seerr_api_key">API key — Settings → General → API Key</label>
+        <input type="password" id="seerr_api_key" autocomplete="off" />
       </div>
 
       <h2>TMDB</h2>

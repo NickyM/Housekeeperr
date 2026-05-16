@@ -350,3 +350,274 @@ class PlexClient:
 
     async def ping(self) -> dict[str, Any]:
         return await _ping(f"{self.base}/identity", headers=self._headers())
+
+
+# ---------------- Jellyfin ----------------------------------------------------
+
+class JellyfinClient:
+    """Talks to a Jellyfin server. API-key auth via the MediaBrowser header."""
+
+    def __init__(self, base_url: str, api_key: str, user_id: str = "",
+                 timeout: float = 60.0):
+        self.base = _normalize_url(base_url)
+        self.api_key = api_key
+        self.user_id = (user_id or "").strip()
+        self.timeout = timeout
+
+    def _headers(self) -> dict[str, str]:
+        # Jellyfin accepts either header form; sending both is harmless.
+        return {
+            "Authorization": f'MediaBrowser Token="{self.api_key}"',
+            "X-MediaBrowser-Token": self.api_key,
+            "Accept": "application/json",
+        }
+
+    async def users(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
+        r = await client.get(f"{self.base}/Users", headers=self._headers())
+        r.raise_for_status()
+        return r.json() or []
+
+    async def _items_for_user(self, user_id: str, item_types: str,
+                              fields: str, client: httpx.AsyncClient
+                              ) -> list[dict[str, Any]]:
+        params = {
+            "Recursive": "true",
+            "IncludeItemTypes": item_types,
+            "Fields": fields,
+        }
+        r = await client.get(
+            f"{self.base}/Users/{user_id}/Items",
+            headers=self._headers(),
+            params=params,
+        )
+        r.raise_for_status()
+        return (r.json() or {}).get("Items", []) or []
+
+    @staticmethod
+    def _provider_ids(item: dict[str, Any]) -> dict[str, str]:
+        """Normalize Jellyfin's ProviderIds dict to lowercase keys we use."""
+        ids = item.get("ProviderIds") or {}
+        out: dict[str, str] = {}
+        for k, v in ids.items():
+            if not v:
+                continue
+            kl = k.lower()
+            if kl == "tmdb":
+                out["tmdb"] = str(v)
+            elif kl == "tvdb":
+                out["tvdb"] = str(v)
+            elif kl == "imdb":
+                out["imdb"] = str(v) if str(v).startswith("tt") else f"tt{v}"
+        return out
+
+    async def watched_index(self) -> dict[str, dict[str, dict[str, Any]]]:
+        """Same shape as PlexClient.watched_index() so the scanner can treat
+        them interchangeably. Aggregates across all non-hidden, non-disabled
+        users (any user has watched → counts as watched)."""
+        idx: dict[str, dict[str, dict[str, Any]]] = {
+            "movie": {"tmdb": {}, "tvdb": {}, "imdb": {}},
+            "tv":    {"tmdb": {}, "tvdb": {}, "imdb": {}},
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as c:
+            if self.user_id:
+                user_ids = [self.user_id]
+            else:
+                users = await self.users(c)
+                user_ids = []
+                for u in users:
+                    pol = u.get("Policy") or {}
+                    if pol.get("IsDisabled") or pol.get("IsHidden"):
+                        continue
+                    if u.get("Id"):
+                        user_ids.append(u["Id"])
+            for uid in user_ids:
+                movies = await self._items_for_user(
+                    uid, "Movie", "ProviderIds,UserData", c)
+                shows = await self._items_for_user(
+                    uid, "Series",
+                    "ProviderIds,UserData,RecursiveItemCount,ChildCount", c)
+                self._merge_movies(movies, idx["movie"])
+                self._merge_shows(shows, idx["tv"])
+        return idx
+
+    @staticmethod
+    def _merge_movies(items: list[dict[str, Any]],
+                      bucket: dict[str, dict[str, Any]]) -> None:
+        for it in items:
+            ud = it.get("UserData") or {}
+            played = bool(ud.get("Played"))
+            view_count = int(ud.get("PlayCount") or 0)
+            info_template = {
+                "watched": 1 if played else 0,
+                "view_count": view_count,
+                "total_episodes": None,
+                "last_viewed_at": ud.get("LastPlayedDate"),
+                "rating_key": None,
+                "jellyfin_item_id": str(it.get("Id") or ""),
+            }
+            ids = JellyfinClient._provider_ids(it)
+            for src, val in ids.items():
+                existing = bucket[src].get(val)
+                if existing:
+                    # Aggregate across users (OR-watched, max view_count)
+                    existing["watched"] = max(existing["watched"], info_template["watched"])
+                    existing["view_count"] = max(existing["view_count"], view_count)
+                    if not existing.get("jellyfin_item_id"):
+                        existing["jellyfin_item_id"] = info_template["jellyfin_item_id"]
+                else:
+                    bucket[src][val] = dict(info_template)
+
+    @staticmethod
+    def _merge_shows(items: list[dict[str, Any]],
+                     bucket: dict[str, dict[str, Any]]) -> None:
+        for it in items:
+            ud = it.get("UserData") or {}
+            total = int(it.get("RecursiveItemCount") or 0)
+            unplayed = int(ud.get("UnplayedItemCount") or 0)
+            played = max(0, total - unplayed) if total else int(ud.get("PlayCount") or 0)
+            if total > 0 and played >= total:
+                w = 1
+            elif played > 0:
+                w = 2
+            else:
+                w = 0
+            info_template = {
+                "watched": w,
+                "view_count": played,
+                "total_episodes": total or None,
+                "last_viewed_at": ud.get("LastPlayedDate"),
+                "rating_key": None,
+                "jellyfin_item_id": str(it.get("Id") or ""),
+            }
+            ids = JellyfinClient._provider_ids(it)
+            for src, val in ids.items():
+                existing = bucket[src].get(val)
+                if existing:
+                    # Aggregate: an episode watched by ANY user counts. Take
+                    # max watched-state and max played count.
+                    cur_w = existing["watched"]
+                    if w == 1 or cur_w == 1:
+                        existing["watched"] = 1
+                    elif w == 2 or cur_w == 2:
+                        existing["watched"] = 2
+                    existing["view_count"] = max(existing["view_count"], played)
+                    if total and not existing.get("total_episodes"):
+                        existing["total_episodes"] = total
+                    if not existing.get("jellyfin_item_id"):
+                        existing["jellyfin_item_id"] = info_template["jellyfin_item_id"]
+                else:
+                    bucket[src][val] = dict(info_template)
+
+    async def show_episodes(self, series_id: str) -> list[dict[str, Any]]:
+        """Aggregated per-episode watch state across users for one Jellyfin
+        series. Returns list of {season, episode, watched, view_count}."""
+        async with httpx.AsyncClient(timeout=self.timeout) as c:
+            user_ids: list[str]
+            if self.user_id:
+                user_ids = [self.user_id]
+            else:
+                user_ids = [
+                    u["Id"] for u in await self.users(c)
+                    if not (u.get("Policy") or {}).get("IsDisabled")
+                    and not (u.get("Policy") or {}).get("IsHidden")
+                    and u.get("Id")
+                ]
+            agg: dict[tuple[int, int], dict[str, Any]] = {}
+            for uid in user_ids:
+                params = {
+                    "Recursive": "true",
+                    "ParentId": series_id,
+                    "IncludeItemTypes": "Episode",
+                    "Fields": "UserData,IndexNumber,ParentIndexNumber",
+                }
+                r = await c.get(
+                    f"{self.base}/Users/{uid}/Items",
+                    headers=self._headers(),
+                    params=params,
+                )
+                r.raise_for_status()
+                for ep in (r.json() or {}).get("Items", []) or []:
+                    season = ep.get("ParentIndexNumber")
+                    episode = ep.get("IndexNumber")
+                    if season is None or episode is None:
+                        continue
+                    ud = ep.get("UserData") or {}
+                    played = bool(ud.get("Played"))
+                    pc = int(ud.get("PlayCount") or 0)
+                    key = (int(season), int(episode))
+                    cur = agg.get(key)
+                    if cur is None:
+                        agg[key] = {"season": int(season), "episode": int(episode),
+                                    "watched": played, "view_count": pc}
+                    else:
+                        cur["watched"] = cur["watched"] or played
+                        cur["view_count"] = max(cur["view_count"], pc)
+            return list(agg.values())
+
+    async def ping(self) -> dict[str, Any]:
+        return await _ping(f"{self.base}/System/Info/Public", headers=self._headers())
+
+
+# ---------------- Seerr (formerly Overseerr / Jellyseerr) --------------------
+
+class SeerrClient:
+    """Talks to Seerr (https://github.com/seerr-team/seerr) — the continuation
+    of Overseerr / Jellyseerr after both were sunset. The API surface is
+    unchanged, so this client also works against any legacy Overseerr or
+    Jellyseerr install."""
+
+    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0):
+        self.base = _normalize_url(base_url)
+        self.api_key = api_key
+        self.timeout = timeout
+
+    def _headers(self) -> dict[str, str]:
+        return {"X-Api-Key": self.api_key, "Accept": "application/json"}
+
+    @staticmethod
+    def _display_name(requester: dict[str, Any] | None) -> str:
+        if not requester:
+            return "unknown"
+        return (requester.get("displayName")
+                or requester.get("username")
+                or requester.get("plexUsername")
+                or requester.get("jellyfinUsername")
+                or requester.get("email")
+                or "unknown")
+
+    async def request_index(self) -> dict[str, dict[str, list[str]]]:
+        """Walk all requests and return {'movie': {tmdb_id: [requesters]},
+                                        'tv':    {tmdb_id: [requesters]}}."""
+        out: dict[str, dict[str, list[str]]] = {"movie": {}, "tv": {}}
+        page_size = 100
+        skip = 0
+        async with httpx.AsyncClient(timeout=self.timeout) as c:
+            while True:
+                r = await c.get(
+                    f"{self.base}/api/v1/request",
+                    headers=self._headers(),
+                    params={"take": page_size, "skip": skip, "sort": "added"},
+                )
+                r.raise_for_status()
+                data = r.json() or {}
+                items = data.get("results") or []
+                for req in items:
+                    media = req.get("media") or {}
+                    media_type = media.get("mediaType") or req.get("type")
+                    tmdb_id = media.get("tmdbId")
+                    if not tmdb_id or media_type not in ("movie", "tv"):
+                        continue
+                    name = self._display_name(req.get("requestedBy"))
+                    bucket = out["movie" if media_type == "movie" else "tv"]
+                    key = str(tmdb_id)
+                    if name not in bucket.setdefault(key, []):
+                        bucket[key].append(name)
+                page_info = data.get("pageInfo") or {}
+                total = int(page_info.get("results") or 0)
+                skip += len(items)
+                if not items or skip >= total:
+                    break
+        return out
+
+    async def ping(self) -> dict[str, Any]:
+        return await _ping(f"{self.base}/api/v1/status", headers=self._headers())

@@ -1,8 +1,8 @@
 FROM python:3.12-slim AS base
 
-LABEL org.opencontainers.image.source="https://github.com/NickyM/Housekeeper" \
+LABEL org.opencontainers.image.source="https://github.com/NickyM/Housekeeperr" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
-      org.opencontainers.image.title="Housekeeper" \
+      org.opencontainers.image.title="Housekeeperr" \
       org.opencontainers.image.description="Scan Radarr/Sonarr libraries for content available on streaming services and watched on Plex; bulk ignore/delete"
 
 ENV PYTHONUNBUFFERED=1 \

@@ -1,21 +1,32 @@
-# Housekeeper
+# Housekeeperr
 
 Self-hosted web app that scans your **Radarr** and **Sonarr** libraries,
 cross-references each title against streaming services (Netflix, Disney+, …)
-in your region via **TMDB**, and optionally checks watch status on **Plex**.
-Surfaces cleanup candidates in a single page with bulk ignore / delete.
+in your region via **TMDB**, optionally checks watch status on **Plex**
+and/or **Jellyfin**, and tags items with who requested them via
+**[Seerr](https://github.com/seerr-team/seerr)** (formerly Overseerr /
+Jellyseerr). Surfaces cleanup candidates in a single page
+with bulk ignore / delete.
 
 > "What of my collection is now on Netflix and Disney+ in my country, that
-> I've already finished watching on Plex?" — Housekeeper answers that, with
-> one click to free the disk.
+> I've already finished watching, and who asked for it in the first place?"
+> — Housekeeperr answers that, with one click to free the disk.
 
 ## Features
 
 - 📚 Scans every movie in Radarr and every show in Sonarr by their TMDB id.
 - 📺 Resolves streaming availability per **region** via the TMDB
   watch-providers endpoint (the same data JustWatch publishes — free, official).
-- 🎬 Optional **Plex** integration: tags items as Watched / In progress and
-  enables a "Watched & on streaming" cleanup view.
+- 🎬 Optional **Plex** and/or **Jellyfin** integration: tags items as
+  Watched / In progress and enables a "Watched & on streaming" cleanup
+  view. If both are configured, watch state is unioned (watched by *either*
+  counts as watched). Jellyfin aggregates across all non-hidden users by
+  default (configurable).
+- 🙋 Optional **[Seerr](https://github.com/seerr-team/seerr)** integration
+  (also works against legacy Overseerr / Jellyseerr installs — same API):
+  each card is tagged
+  with who requested the title (and a hover-tooltip listing all requesters
+  if multiple).
 - ✅ Per-item **Ignore** (persistent — survives rescans and re-additions) and
   **Delete** (calls Radarr/Sonarr's DELETE endpoint with `deleteFiles=true`).
 - 📦 **Select mode** for bulk ignore/delete across many items at once.
@@ -31,11 +42,11 @@ Surfaces cleanup candidates in a single page with bulk ignore / delete.
 
 ```bash
 docker run -d \
-  --name housekeeper \
+  --name housekeeperr \
   -p 8765:8765 \
-  -v housekeeper-data:/data \
+  -v housekeeperr-data:/data \
   --restart unless-stopped \
-  ghcr.io/nickym/housekeeper:latest
+  ghcr.io/nickym/housekeeperr:latest
 ```
 
 …then open <http://localhost:8765> and go to **Settings**.
@@ -44,19 +55,19 @@ docker run -d \
 
 ```yaml
 services:
-  housekeeper:
-    image: ghcr.io/nickym/housekeeper:latest
-    container_name: housekeeper
+  housekeeperr:
+    image: ghcr.io/nickym/housekeeperr:latest
+    container_name: housekeeperr
     restart: unless-stopped
     ports:
       - "8765:8765"
     volumes:
-      - housekeeper-data:/data
+      - housekeeperr-data:/data
     environment:
       TZ: Europe/Copenhagen
 
 volumes:
-  housekeeper-data:
+  housekeeperr-data:
 ```
 
 The repo ships with a working [`docker-compose.yml`](docker-compose.yml).
@@ -93,13 +104,19 @@ controls where the SQLite database is stored.
 | TMDB | API key (v3) | Free — register at <https://www.themoviedb.org/settings/api> |
 | Plex | URL | Optional. e.g. `http://192.168.1.50:32400` |
 | Plex | X-Plex-Token | Optional. [How to find it](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/) |
+| Jellyfin | URL | Optional. e.g. `http://192.168.1.50:8096` |
+| Jellyfin | API key | Optional. Dashboard → Advanced → API Keys |
+| Jellyfin | User ID | Optional. Blank = aggregate across all non-hidden users (recommended). Set to a specific user GUID to use that user's watch state only. |
+| Seerr | URL | Optional. e.g. `http://192.168.1.50:5055`. Also works with legacy Overseerr / Jellyseerr (same API). |
+| Seerr | API key | Optional. Settings → General → API Key |
 | Region | | Country to check streaming availability in |
 | Providers | | Pick the services to flag (Netflix, Disney+, etc.) |
 
 After saving, click **Scan now** in the top bar. The scan fetches every
-Radarr/Sonarr title, looks up its streaming providers on TMDB, and pulls
-Plex watch state in parallel. Result: a grid of cards with provider chips
-and watched/in-progress tags.
+Radarr/Sonarr title, looks up its streaming providers on TMDB, pulls watch
+state from Plex/Jellyfin in parallel, and pulls request history from
+Seerr. Result: a grid of cards with provider, watched,
+in-progress, and requester chips.
 
 ## Modes
 
@@ -107,8 +124,11 @@ The **Mode** dropdown on the Library page changes what's shown:
 
 - **On a streaming service** — items currently available on any of your
   selected providers in your region. *(Default — the original use case.)*
-- **Watched on Plex** — items you've finished watching, regardless of
-  streaming availability.
+- **Watched on Plex / Jellyfin** — items you've finished watching,
+  regardless of streaming availability. The label adapts to whichever
+  watch source(s) you've configured ("Watched on Plex", "Watched on
+  Jellyfin", or "Watched on Plex / Jellyfin"). If neither is configured,
+  this option is disabled.
 - **Watched & on streaming (cleanup)** — the intersection: prime delete
   candidates.
 - **All library items** — every item in Radarr/Sonarr, no filter.
@@ -136,9 +156,11 @@ Radarr ──┐
          │   (1) list libraries
 Sonarr ──┤
          ▼
-       FastAPI ──(2) TMDB watch/providers (per region) ──┐
-       backend     (3) Plex /library/sections/.../all   │
-         │                                              ▼
+       FastAPI ──(2) TMDB watch/providers (per region)        ──┐
+       backend     (3) Plex /library/sections/.../all          │
+         │           (4) Jellyfin /Users/{id}/Items (per user) │
+         │           (5) Seerr /api/v1/request                 │
+         │                                                     ▼
          │                       SQLite (config + items + ignored)
          ▼
    Vanilla-JS frontend  ──── Library grid + Settings ────  Browser

@@ -218,7 +218,15 @@ function render() {
         : "";
       watchedTag = `<span class="tag inprogress">In progress${sub}</span>`;
     }
-    const tags = watchedTag + provTags;
+    let requesterTag = "";
+    const reqs = it.requesters || [];
+    if (reqs.length) {
+      const label = reqs.length === 1
+        ? `Requested by ${reqs[0]}`
+        : `Requested by ${reqs[0]} +${reqs.length - 1}`;
+      requesterTag = `<span class="tag requested" title="${escapeHtml(reqs.join(", "))}">${escapeHtml(label)}</span>`;
+    }
+    const tags = watchedTag + requesterTag + provTags;
 
     const arrLink = it.arr_url
       ? `<a class="btn" href="${it.arr_url}" target="_blank" rel="noopener">Open in ${it.source === "radarr" ? "Radarr" : "Sonarr"}</a>`
@@ -322,6 +330,34 @@ async function loadItems() {
   );
   allItems = data.items;
   render();
+}
+
+async function adaptModeDropdown() {
+  // Update "Watched on X" labels and disable watched-related modes if no
+  // watch source is configured.
+  let cfg;
+  try { cfg = await api("/api/config"); } catch { return; }
+  const sources = [];
+  if (cfg.plex_url && cfg.plex_token) sources.push("Plex");
+  if (cfg.jellyfin_url && cfg.jellyfin_api_key) sources.push("Jellyfin");
+  const label = sources.length ? sources.join(" / ") : "";
+
+  const sel = $("#mode-filter");
+  for (const opt of sel.options) {
+    if (opt.value === "watched") {
+      opt.textContent = label ? `Watched on ${label}` : "Watched (no source configured)";
+      opt.disabled = !label;
+    } else if (opt.value === "both") {
+      opt.textContent = label
+        ? `Watched on ${label} & on streaming (cleanup)`
+        : "Watched & on streaming (no watch source configured)";
+      opt.disabled = !label;
+    }
+  }
+  if (sel.selectedOptions[0]?.disabled) {
+    sel.value = "streaming";
+    loadItems();
+  }
 }
 
 async function loadProviderFilter() {
@@ -545,6 +581,7 @@ $("#search").addEventListener("input", render);
 $("#show-ignored").addEventListener("change", loadItems);
 
 (async () => {
+  await adaptModeDropdown();
   await loadItems();
   await loadProviderFilter();
   pollStatus();

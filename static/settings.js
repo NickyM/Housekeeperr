@@ -29,6 +29,11 @@ async function loadConfig() {
   $("#tmdb_api_key").value = cfg.tmdb_api_key || "";
   $("#plex_url").value = cfg.plex_url || "";
   $("#plex_token").value = cfg.plex_token || "";
+  $("#jellyfin_url").value = cfg.jellyfin_url || "";
+  $("#jellyfin_api_key").value = cfg.jellyfin_api_key || "";
+  $("#jellyfin_user_id").value = cfg.jellyfin_user_id || "";
+  $("#seerr_url").value = cfg.seerr_url || "";
+  $("#seerr_api_key").value = cfg.seerr_api_key || "";
   selectedProviders = new Set((cfg.providers || []).map(Number));
   await loadRegions(cfg.region || "US");
   await loadProviders(cfg.region || "US");
@@ -101,6 +106,11 @@ $("#save").addEventListener("click", async () => {
     tmdb_api_key: $("#tmdb_api_key").value,
     plex_url: $("#plex_url").value.trim(),
     plex_token: $("#plex_token").value,
+    jellyfin_url: $("#jellyfin_url").value.trim(),
+    jellyfin_api_key: $("#jellyfin_api_key").value,
+    jellyfin_user_id: $("#jellyfin_user_id").value.trim(),
+    seerr_url: $("#seerr_url").value.trim(),
+    seerr_api_key: $("#seerr_api_key").value,
     region: $("#region").value,
     providers: [...selectedProviders],
   };
@@ -127,6 +137,10 @@ $("#test").addEventListener("click", async () => {
     tmdb_api_key: $("#tmdb_api_key").value,
     plex_url: $("#plex_url").value.trim(),
     plex_token: $("#plex_token").value,
+    jellyfin_url: $("#jellyfin_url").value.trim(),
+    jellyfin_api_key: $("#jellyfin_api_key").value,
+    seerr_url: $("#seerr_url").value.trim(),
+    seerr_api_key: $("#seerr_api_key").value,
   };
   try {
     const res = await api("/api/config/test", {
@@ -135,7 +149,7 @@ $("#test").addEventListener("click", async () => {
     });
     const lines = [];
     let anyFail = false;
-    for (const k of ["radarr", "sonarr", "tmdb", "plex"]) {
+    for (const k of ["radarr", "sonarr", "tmdb", "plex", "jellyfin", "seerr"]) {
       const r = res[k];
       if (r === null || r === undefined) {
         lines.push(`${k}: not configured`);

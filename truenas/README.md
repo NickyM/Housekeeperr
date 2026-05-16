@@ -1,22 +1,22 @@
-# Housekeeper on TrueNAS SCALE
+# Housekeeperr on TrueNAS SCALE
 
 TrueNAS SCALE 24.10 ("Electric Eel") and newer uses a Docker-based app system.
-Housekeeper installs cleanly as a **Custom App**.
+Housekeeperr installs cleanly as a **Custom App**.
 
 ## Prerequisites
 
-1. A published Docker image, e.g. `ghcr.io/nickym/housekeeper:latest`.
-   (Build it yourself with `docker build -t housekeeper .` and push, or use a
+1. A published Docker image, e.g. `ghcr.io/nickym/housekeeperr:latest`.
+   (Build it yourself with `docker build -t housekeeperr .` and push, or use a
    public image once it's available.)
 2. A dataset on TrueNAS for persistent state, e.g.
-   `tank/apps/housekeeper/data`. Create it under **Datasets → Add Dataset**.
+   `tank/apps/housekeeperr/data`. Create it under **Datasets → Add Dataset**.
 
 ## Install via the Apps UI
 
 1. **Apps → Discover Apps → Custom App** (top-right).
 2. Fill in:
-   - **Application Name**: `housekeeper`
-   - **Image Repository**: `ghcr.io/nickym/housekeeper`
+   - **Application Name**: `housekeeperr`
+   - **Image Repository**: `ghcr.io/nickym/housekeeperr`
    - **Image Tag**: `latest`
 3. **Container Configuration**
    - **Container Entrypoint**: leave blank (the image's CMD is correct).
@@ -30,7 +30,7 @@ Housekeeper installs cleanly as a **Custom App**.
 5. **Storage → Add Storage**
    - **Type**: Host Path
    - **Mount Path**: `/data`
-   - **Host Path**: `/mnt/tank/apps/housekeeper/data` (your dataset)
+   - **Host Path**: `/mnt/tank/apps/housekeeperr/data` (your dataset)
    - **Read-only**: off
 6. **Save** and wait for the app to reach `running`.
 
@@ -49,5 +49,5 @@ re-installs, and container restarts.
   `localhost` is the container itself, not the TrueNAS host. Use the TrueNAS
   LAN IP (e.g. `http://192.168.1.50:7878`) in the Settings page.
 - **Updates**: bump the tag (or re-pull `:latest`) under
-  **Apps → Installed → housekeeper → Edit**. Your data is preserved because
+  **Apps → Installed → housekeeperr → Edit**. Your data is preserved because
   it lives on the mounted dataset.

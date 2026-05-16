@@ -10,8 +10,29 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db
-from .clients import PlexClient, RadarrClient, SonarrClient, TMDBClient
+from .clients import (
+    JellyfinClient, PlexClient, RadarrClient, SeerrClient, SonarrClient, TMDBClient,
+)
 from .scanner import run_scan
+
+
+async def _jellyfin_show_episodes(jelly: JellyfinClient,
+                                 tmdb_id: int | None,
+                                 tvdb_id: int | None,
+                                 imdb_id: str | None) -> list[dict[str, Any]]:
+    """Find a Jellyfin show by external ID and return its per-episode watch state."""
+    idx = await jelly.watched_index()
+    tv = idx.get("tv") or {}
+    info = None
+    if tmdb_id and str(tmdb_id) in tv.get("tmdb", {}):
+        info = tv["tmdb"][str(tmdb_id)]
+    elif tvdb_id and str(tvdb_id) in tv.get("tvdb", {}):
+        info = tv["tvdb"][str(tvdb_id)]
+    elif imdb_id and imdb_id in tv.get("imdb", {}):
+        info = tv["imdb"][imdb_id]
+    if not info or not info.get("jellyfin_item_id"):
+        return []
+    return await jelly.show_episodes(info["jellyfin_item_id"])
 
 
 async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
@@ -20,18 +41,21 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
     cfg = db.get_config()
     if not (cfg.get("sonarr_url") and cfg.get("sonarr_api_key")):
         raise HTTPException(400, "Sonarr not configured")
-    if not (cfg.get("plex_url") and cfg.get("plex_token")):
-        raise HTTPException(400, "Plex not configured")
+    has_plex = bool(cfg.get("plex_url") and cfg.get("plex_token"))
+    has_jelly = bool(cfg.get("jellyfin_url") and cfg.get("jellyfin_api_key"))
+    if not (has_plex or has_jelly):
+        raise HTTPException(400, "Neither Plex nor Jellyfin is configured")
     item = db.get_item("sonarr", source_id)
     if not item:
         raise HTTPException(404, "item not found in scan cache — run a scan first")
-    plex = PlexClient(cfg["plex_url"], cfg["plex_token"])
     sonarr = SonarrClient(cfg["sonarr_url"], cfg["sonarr_api_key"])
 
-    rk = item.get("plex_rating_key")
-    if not rk:
-        # Cache may predate the plex_rating_key column or the show was rematched
-        # in Plex. Re-resolve from the live watched_index and persist for next time.
+    watched_keys: set[tuple[int, int]] = set()
+
+    # Path 1: Plex (preferred since per-episode watch state is exact via allLeaves)
+    plex = PlexClient(cfg["plex_url"], cfg["plex_token"]) if has_plex else None
+    rk = item.get("plex_rating_key") if has_plex else None
+    if has_plex and not rk:
         idx = await plex.watched_index()
         tv = idx.get("tv") or {}
         tmdb_id = item.get("tmdb_id")
@@ -39,7 +63,6 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
         if tmdb_id and str(tmdb_id) in tv.get("tmdb", {}):
             info = tv["tmdb"][str(tmdb_id)]
         if not info:
-            # Try by tvdb / imdb from a live Sonarr lookup since we don't store them
             try:
                 sonarr_series = await sonarr.list_series()
                 match = next((s for s in sonarr_series if int(s.get("id") or 0) == source_id), None)
@@ -52,16 +75,37 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
                     info = tv["tvdb"][str(tvdb_id)]
                 elif imdb_id and imdb_id in tv.get("imdb", {}):
                     info = tv["imdb"][imdb_id]
-        if not info or not info.get("rating_key"):
-            raise HTTPException(400,
-                "no Plex match for this show; can't determine watched episodes")
-        rk = info["rating_key"]
-        db.set_plex_rating_key("sonarr", source_id, rk)
+        if info and info.get("rating_key"):
+            rk = info["rating_key"]
+            db.set_plex_rating_key("sonarr", source_id, rk)
+    if has_plex and rk:
+        plex_eps = await plex.show_episodes(rk)
+        for e in plex_eps:
+            if e["watched"]:
+                watched_keys.add((e["season"], e["episode"]))
 
-    plex_eps = await plex.show_episodes(rk)
-    watched_keys = {(e["season"], e["episode"]) for e in plex_eps if e["watched"]}
+    # Path 2: Jellyfin (used when Plex isn't configured or didn't match)
+    if has_jelly and not watched_keys:
+        jelly = JellyfinClient(
+            cfg["jellyfin_url"], cfg["jellyfin_api_key"],
+            user_id=cfg.get("jellyfin_user_id") or "",
+        )
+        try:
+            sonarr_series = await sonarr.list_series()
+            match = next((s for s in sonarr_series if int(s.get("id") or 0) == source_id), None)
+        except Exception:
+            match = None
+        tmdb_id = item.get("tmdb_id")
+        tvdb_id = (match or {}).get("tvdbId")
+        imdb_id = (match or {}).get("imdbId")
+        jelly_eps = await _jellyfin_show_episodes(jelly, tmdb_id, tvdb_id, imdb_id)
+        for e in jelly_eps:
+            if e["watched"]:
+                watched_keys.add((e["season"], e["episode"]))
+
     if not watched_keys:
-        return {"deleted_files": 0, "deleted_episodes": 0}
+        raise HTTPException(400,
+            "couldn't determine watched episodes from any configured source")
 
     sonarr_eps = await sonarr.list_episodes(source_id)
     file_ids: set[int] = set()
@@ -79,7 +123,7 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
 
 db.init()
 
-app = FastAPI(title="Housekeeper", docs_url="/api/docs")
+app = FastAPI(title="Housekeeperr", docs_url="/api/docs")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -107,8 +151,19 @@ class ConfigPayload(BaseModel):
     tmdb_api_key: str | None = None
     plex_url: str | None = None
     plex_token: str | None = None
+    jellyfin_url: str | None = None
+    jellyfin_api_key: str | None = None
+    jellyfin_user_id: str | None = None
+    seerr_url: str | None = None
+    seerr_api_key: str | None = None
     region: str | None = None
     providers: list[int] | None = None
+
+
+_SECRET_KEYS = (
+    "radarr_api_key", "sonarr_api_key", "tmdb_api_key",
+    "plex_token", "jellyfin_api_key", "seerr_api_key",
+)
 
 
 @app.get("/api/config")
@@ -117,7 +172,7 @@ async def get_config() -> dict[str, Any]:
     # Mask the keys in the GET response so they don't render in plaintext on page load,
     # but keep them retrievable by length so the UI can show "configured" state.
     masked = dict(cfg)
-    for k in ("radarr_api_key", "sonarr_api_key", "tmdb_api_key", "plex_token"):
+    for k in _SECRET_KEYS:
         if masked.get(k):
             masked[k] = "•" * 8
     return masked
@@ -127,7 +182,7 @@ async def get_config() -> dict[str, Any]:
 async def update_config(payload: ConfigPayload) -> dict[str, Any]:
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     # Ignore unchanged masked values posted back from the UI
-    for k in ("radarr_api_key", "sonarr_api_key", "tmdb_api_key", "plex_token"):
+    for k in _SECRET_KEYS:
         if updates.get(k) and set(updates[k]) == {"•"}:
             updates.pop(k)
     db.set_config(updates)
@@ -141,13 +196,16 @@ async def test_config(payload: ConfigPayload | None = None) -> dict[str, Any]:
     cfg = db.get_config()
     overrides = (payload.model_dump() if payload else {}) or {}
     # Don't accept the masked placeholder as a real key
-    for k in ("radarr_api_key", "sonarr_api_key", "tmdb_api_key", "plex_token"):
+    for k in _SECRET_KEYS:
         v = overrides.get(k)
         if v and set(v) == {"•"}:
             overrides[k] = None
     eff = {**cfg, **{k: v for k, v in overrides.items() if v is not None}}
 
-    out: dict[str, Any] = {"radarr": None, "sonarr": None, "tmdb": None, "plex": None}
+    out: dict[str, Any] = {
+        "radarr": None, "sonarr": None, "tmdb": None,
+        "plex": None, "jellyfin": None, "seerr": None,
+    }
     if eff.get("radarr_url") and eff.get("radarr_api_key"):
         out["radarr"] = await RadarrClient(eff["radarr_url"], eff["radarr_api_key"]).ping()
     if eff.get("sonarr_url") and eff.get("sonarr_api_key"):
@@ -156,6 +214,12 @@ async def test_config(payload: ConfigPayload | None = None) -> dict[str, Any]:
         out["tmdb"] = await TMDBClient(eff["tmdb_api_key"]).ping()
     if eff.get("plex_url") and eff.get("plex_token"):
         out["plex"] = await PlexClient(eff["plex_url"], eff["plex_token"]).ping()
+    if eff.get("jellyfin_url") and eff.get("jellyfin_api_key"):
+        out["jellyfin"] = await JellyfinClient(
+            eff["jellyfin_url"], eff["jellyfin_api_key"]
+        ).ping()
+    if eff.get("seerr_url") and eff.get("seerr_api_key"):
+        out["seerr"] = await SeerrClient(eff["seerr_url"], eff["seerr_api_key"]).ping()
     return out
 
 

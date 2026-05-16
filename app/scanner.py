@@ -8,7 +8,9 @@ from typing import Any
 import httpx
 
 from . import db
-from .clients import PlexClient, RadarrClient, SonarrClient, TMDBClient
+from .clients import (
+    JellyfinClient, PlexClient, RadarrClient, SeerrClient, SonarrClient, TMDBClient,
+)
 
 
 def _radarr_size(movie: dict[str, Any]) -> int:
@@ -47,27 +49,74 @@ def _extract_providers(watch_results: dict[str, Any], region: str,
     return found_ids, found_names
 
 
-def _lookup_watched(plex_idx: dict[str, Any] | None, kind: str,
-                    tmdb_id: int | None, tvdb_id: int | None,
-                    imdb_id: str | None) -> dict[str, Any]:
-    blank = {"watched": 0, "view_count": 0, "total_episodes": None,
-             "last_viewed_at": None, "rating_key": None}
-    if not plex_idx:
-        return blank
-    bucket = plex_idx.get(kind) or {}
+def _lookup_in(idx: dict[str, Any] | None, kind: str,
+               tmdb_id: int | None, tvdb_id: int | None,
+               imdb_id: str | None) -> dict[str, Any] | None:
+    if not idx:
+        return None
+    bucket = idx.get(kind) or {}
     if tmdb_id and str(tmdb_id) in bucket.get("tmdb", {}):
         return bucket["tmdb"][str(tmdb_id)]
     if tvdb_id and str(tvdb_id) in bucket.get("tvdb", {}):
         return bucket["tvdb"][str(tvdb_id)]
     if imdb_id and imdb_id in bucket.get("imdb", {}):
         return bucket["imdb"][imdb_id]
-    return blank
+    return None
+
+
+def _merge_watched(a: dict[str, Any] | None, b: dict[str, Any] | None) -> dict[str, Any]:
+    """OR the watched flag, max the view_count, prefer non-empty extras."""
+    blank = {"watched": 0, "view_count": 0, "total_episodes": None,
+             "last_viewed_at": None, "rating_key": None, "jellyfin_item_id": None}
+    if not a and not b:
+        return blank
+    a = a or {}
+    b = b or {}
+
+    def w_max(wa: int, wb: int) -> int:
+        # 1 (fully watched) > 2 (in progress) > 0 (unknown)
+        if wa == 1 or wb == 1:
+            return 1
+        if wa == 2 or wb == 2:
+            return 2
+        return 0
+
+    return {
+        "watched": w_max(int(a.get("watched") or 0), int(b.get("watched") or 0)),
+        "view_count": max(int(a.get("view_count") or 0), int(b.get("view_count") or 0)),
+        "total_episodes": a.get("total_episodes") or b.get("total_episodes"),
+        "last_viewed_at": max(
+            (a.get("last_viewed_at") or ""), (b.get("last_viewed_at") or ""),
+        ) or None,
+        "rating_key": a.get("rating_key") or b.get("rating_key"),
+        "jellyfin_item_id": a.get("jellyfin_item_id") or b.get("jellyfin_item_id"),
+    }
+
+
+def _lookup_watched(plex_idx: dict[str, Any] | None,
+                    jelly_idx: dict[str, Any] | None,
+                    kind: str,
+                    tmdb_id: int | None, tvdb_id: int | None,
+                    imdb_id: str | None) -> dict[str, Any]:
+    plex_info = _lookup_in(plex_idx, kind, tmdb_id, tvdb_id, imdb_id)
+    jelly_info = _lookup_in(jelly_idx, kind, tmdb_id, tvdb_id, imdb_id)
+    return _merge_watched(plex_info, jelly_info)
+
+
+def _lookup_requesters(req_idx: dict[str, dict[str, list[str]]] | None,
+                       kind: str, tmdb_id: int | None) -> list[str]:
+    if not req_idx or not tmdb_id:
+        return []
+    bucket = req_idx.get(kind) or {}
+    return list(bucket.get(str(tmdb_id), []))
 
 
 async def _process_batch(items: list[dict[str, Any]], kind: str, source: str,
                           tmdb: TMDBClient, region: str, wanted: set[int],
                           counter: dict[str, int],
-                          plex_idx: dict[str, Any] | None) -> None:
+                          plex_idx: dict[str, Any] | None,
+                          jelly_idx: dict[str, Any] | None,
+                          req_idx: dict[str, dict[str, list[str]]] | None) -> None:
     sem = asyncio.Semaphore(8)
 
     async with httpx.AsyncClient(timeout=30) as client:
@@ -92,10 +141,13 @@ async def _process_batch(items: list[dict[str, Any]], kind: str, source: str,
                 else:
                     arr_path = f"series/{slug}" if slug else ""
                 watched = _lookup_watched(
-                    plex_idx, kind,
+                    plex_idx, jelly_idx, kind,
                     int(tmdb_id) if tmdb_id else None,
                     int(it.get("tvdbId") or 0) or None,
                     it.get("imdbId") or None,
+                )
+                requesters = _lookup_requesters(
+                    req_idx, kind, int(tmdb_id) if tmdb_id else None
                 )
                 db.upsert_item({
                     "source": source,
@@ -114,6 +166,8 @@ async def _process_batch(items: list[dict[str, Any]], kind: str, source: str,
                     "total_episodes": watched["total_episodes"],
                     "last_viewed_at": watched["last_viewed_at"],
                     "plex_rating_key": watched.get("rating_key"),
+                    "jellyfin_item_id": watched.get("jellyfin_item_id"),
+                    "requesters": json.dumps(requesters),
                 })
                 counter["done"] += 1
                 db.set_scan_status(processed=counter["done"])
@@ -161,12 +215,29 @@ async def run_scan() -> None:
                 db.set_scan_status(error=f"Sonarr fetch failed: {e}")
 
         plex_idx: dict[str, Any] | None = None
+        jelly_idx: dict[str, Any] | None = None
+        req_idx: dict[str, dict[str, list[str]]] | None = None
         if cfg.get("plex_url") and cfg.get("plex_token"):
             db.set_scan_status(phase="plex")
             try:
                 plex_idx = await PlexClient(cfg["plex_url"], cfg["plex_token"]).watched_index()
             except Exception as e:
                 db.set_scan_status(error=f"Plex fetch failed: {e}")
+        if cfg.get("jellyfin_url") and cfg.get("jellyfin_api_key"):
+            db.set_scan_status(phase="jellyfin")
+            try:
+                jelly_idx = await JellyfinClient(
+                    cfg["jellyfin_url"], cfg["jellyfin_api_key"],
+                    user_id=cfg.get("jellyfin_user_id") or "",
+                ).watched_index()
+            except Exception as e:
+                db.set_scan_status(error=f"Jellyfin fetch failed: {e}")
+        if cfg.get("seerr_url") and cfg.get("seerr_api_key"):
+            db.set_scan_status(phase="seerr")
+            try:
+                req_idx = await SeerrClient(cfg["seerr_url"], cfg["seerr_api_key"]).request_index()
+            except Exception as e:
+                db.set_scan_status(error=f"Seerr fetch failed: {e}")
 
         total = len(movies) + len(series)
         counter = {"done": 0}
@@ -178,8 +249,10 @@ async def run_scan() -> None:
         if series:
             db.clear_items("sonarr")
 
-        await _process_batch(movies, "movie", "radarr", tmdb, region, wanted, counter, plex_idx)
-        await _process_batch(series, "tv", "sonarr", tmdb, region, wanted, counter, plex_idx)
+        await _process_batch(movies, "movie", "radarr", tmdb, region, wanted,
+                             counter, plex_idx, jelly_idx, req_idx)
+        await _process_batch(series, "tv", "sonarr", tmdb, region, wanted,
+                             counter, plex_idx, jelly_idx, req_idx)
 
         db.set_scan_status(running=0, phase="done", finished_at=_now())
     except Exception as e:

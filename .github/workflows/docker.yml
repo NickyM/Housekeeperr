@@ -29,14 +29,14 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/nickym/housekeeper
+          images: ghcr.io/nickym/housekeeperr
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
-            org.opencontainers.image.title=Housekeeper
+            org.opencontainers.image.title=Housekeeperr
             org.opencontainers.image.licenses=GPL-3.0-or-later
 
       - uses: docker/build-push-action@v6

@@ -1,8 +1,8 @@
-# Housekeeper — project context for Claude
+# Housekeeperr — project context for Claude
 
 Self-hosted web app that scans Radarr/Sonarr libraries, cross-references
 streaming availability via TMDB, and tracks Plex watch state. Lists cleanup
-candidates with bulk ignore/delete. Repo: `github.com/NickyM/Housekeeper`,
+candidates with bulk ignore/delete. Repo: `github.com/NickyM/Housekeeperr`,
 license: **GPL v3**.
 
 ## Stack
@@ -69,4 +69,4 @@ the saved memory `feedback_update_readme.md`.
 - Local dev: `run.bat`
 - Docker: `docker compose up -d` (mounts a named volume at `/data`)
 - TrueNAS SCALE 24.10+: see [`truenas/README.md`](truenas/README.md)
-- Published image: `ghcr.io/nickym/housekeeper:latest`
+- Published image: `ghcr.io/nickym/housekeeperr:latest`

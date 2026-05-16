@@ -49,6 +49,8 @@ def init() -> None:
                 total_episodes INTEGER,
                 last_viewed_at TEXT,
                 plex_rating_key TEXT,
+                jellyfin_item_id TEXT,
+                requesters TEXT NOT NULL DEFAULT '[]',
                 last_scan  TEXT,
                 PRIMARY KEY (source, source_id)
             );
@@ -82,6 +84,8 @@ def init() -> None:
             ("last_viewed_at", "TEXT"),
             ("arr_path", "TEXT"),
             ("plex_rating_key", "TEXT"),
+            ("jellyfin_item_id", "TEXT"),
+            ("requesters", "TEXT NOT NULL DEFAULT '[]'"),
         ):
             if col not in existing:
                 _conn.execute(f"ALTER TABLE items ADD COLUMN {col} {ddl}")
@@ -97,6 +101,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "tmdb_api_key": "",
     "plex_url": "",
     "plex_token": "",
+    "jellyfin_url": "",
+    "jellyfin_api_key": "",
+    "jellyfin_user_id": "",   # optional; blank = all non-hidden users (union)
+    "seerr_url": "",          # Seerr; also works against legacy Overseerr / Jellyseerr
+    "seerr_api_key": "",
     "region": "US",
     # provider IDs to watch for (TMDB / JustWatch ids). 8 = Netflix, 337 = Disney+
     "providers": [8, 337],
@@ -135,11 +144,13 @@ def upsert_item(row: dict[str, Any]) -> None:
             INSERT INTO items (source, source_id, tmdb_id, title, year, kind,
                                poster_url, providers, provider_names, size_bytes,
                                arr_path, watched, view_count, total_episodes,
-                               last_viewed_at, plex_rating_key, last_scan)
+                               last_viewed_at, plex_rating_key, jellyfin_item_id,
+                               requesters, last_scan)
             VALUES (:source, :source_id, :tmdb_id, :title, :year, :kind,
                     :poster_url, :providers, :provider_names, :size_bytes,
                     :arr_path, :watched, :view_count, :total_episodes,
-                    :last_viewed_at, :plex_rating_key, datetime('now'))
+                    :last_viewed_at, :plex_rating_key, :jellyfin_item_id,
+                    :requesters, datetime('now'))
             ON CONFLICT(source, source_id) DO UPDATE SET
                 tmdb_id=excluded.tmdb_id,
                 title=excluded.title,
@@ -155,6 +166,8 @@ def upsert_item(row: dict[str, Any]) -> None:
                 total_episodes=excluded.total_episodes,
                 last_viewed_at=excluded.last_viewed_at,
                 plex_rating_key=excluded.plex_rating_key,
+                jellyfin_item_id=excluded.jellyfin_item_id,
+                requesters=excluded.requesters,
                 last_scan=excluded.last_scan
             """,
             row,
@@ -202,6 +215,10 @@ def list_items(include_ignored: bool = False,
             r["provider_names"] = json.loads(r["provider_names"])
         except json.JSONDecodeError:
             r["provider_names"] = []
+        try:
+            r["requesters"] = json.loads(r["requesters"]) if r.get("requesters") else []
+        except json.JSONDecodeError:
+            r["requesters"] = []
         if provider_filter:
             if not set(provider_filter) & set(r["providers"]):
                 continue
@@ -231,6 +248,14 @@ def set_plex_rating_key(source: str, source_id: int, rating_key: str) -> None:
         _conn.execute(
             "UPDATE items SET plex_rating_key=? WHERE source=? AND source_id=?",
             (rating_key, source, source_id),
+        )
+
+
+def set_jellyfin_item_id(source: str, source_id: int, item_id: str) -> None:
+    with _lock, _conn:
+        _conn.execute(
+            "UPDATE items SET jellyfin_item_id=? WHERE source=? AND source_id=?",
+            (item_id, source, source_id),
         )
 
 
