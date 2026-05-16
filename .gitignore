@@ -1,0 +1,27 @@
+# Persistent app state — contains API keys, ignore list, scan cache
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local-only overrides
+.env
+.env.local
+docker-compose.override.yml

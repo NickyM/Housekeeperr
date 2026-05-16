@@ -1,0 +1,21 @@
+services:
+  housekeeper:
+    build: .
+    image: ghcr.io/nickym/housekeeper:latest
+    container_name: housekeeper
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      # Persists config (API keys), ignore list, scan cache.
+      # Use a named volume (default) or bind-mount a host path you own:
+      #   - /path/on/host/housekeeper:/data
+      - housekeeper-data:/data
+    environment:
+      # All actual config lives in the SQLite DB and is set via the web UI.
+      # The only env var that matters in normal use is the data directory:
+      HOUSEKEEPER_DATA_DIR: /data
+      TZ: ${TZ:-Etc/UTC}
+
+volumes:
+  housekeeper-data:

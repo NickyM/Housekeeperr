@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Housekeeper — Library</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Housekeeper</h1>
+    <nav>
+      <a href="/" class="active">Library</a>
+      <a href="/settings">Settings</a>
+    </nav>
+    <span class="status" id="status">idle</span>
+    <span style="flex:1"></span>
+    <button id="scan-btn" class="primary">Scan now</button>
+  </header>
+  <main>
+    <div class="bar">
+      <div>
+        <label for="mode-filter">Mode</label>
+        <select id="mode-filter">
+          <option value="streaming">On a streaming service</option>
+          <option value="watched">Watched on Plex</option>
+          <option value="both">Watched &amp; on streaming (cleanup)</option>
+          <option value="all">All library items</option>
+        </select>
+      </div>
+      <div>
+        <label for="provider-filter">Provider</label>
+        <select id="provider-filter"><option value="">All selected providers</option></select>
+      </div>
+      <div>
+        <label for="kind-filter">Type</label>
+        <select id="kind-filter">
+          <option value="">Movies &amp; TV</option>
+          <option value="movie">Movies (Radarr)</option>
+          <option value="tv">TV (Sonarr)</option>
+        </select>
+      </div>
+      <div>
+        <label for="search">Search</label>
+        <input type="text" id="search" placeholder="Title…" />
+      </div>
+      <div>
+        <label><input type="checkbox" id="show-ignored" /> Show ignored</label>
+      </div>
+      <span style="flex:1"></span>
+      <button id="select-mode-btn">Select</button>
+      <span class="status" id="count"></span>
+    </div>
+
+    <div id="cards" class="cards"></div>
+
+    <div id="bulk-bar" class="bulk-bar" style="display:none">
+      <span id="bulk-count" class="status">0 selected</span>
+      <span style="flex:1"></span>
+      <button id="bulk-select-all">Select all visible</button>
+      <button id="bulk-clear">Clear</button>
+      <button id="bulk-ignore" class="warn">Ignore selected</button>
+      <button id="bulk-delete" class="danger">Delete selected</button>
+      <button id="bulk-exit">Exit</button>
+    </div>
+    <div id="empty" class="empty" style="display:none">
+      Nothing here yet. Configure your Radarr/Sonarr/TMDB keys in
+      <a href="/settings">Settings</a> and run a scan.
+    </div>
+  </main>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <div id="modal-root" class="modal-root" style="display:none">
+    <div class="modal">
+      <h3 id="modal-title"></h3>
+      <div id="modal-body" class="modal-body"></div>
+      <div id="modal-actions" class="modal-actions"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

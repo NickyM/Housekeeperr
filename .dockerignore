@@ -1,0 +1,33 @@
+# Persistent app state — must never be baked into the image
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Repo / editor / OS
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local-only
+.env
+.env.local
+docker-compose.override.yml
+
+# Docs not needed inside the image
+README.md
+truenas/
+run.bat

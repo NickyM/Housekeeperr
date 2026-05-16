@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Housekeeper — Settings</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Housekeeper</h1>
+    <nav>
+      <a href="/">Library</a>
+      <a href="/settings" class="active">Settings</a>
+    </nav>
+    <span style="flex:1"></span>
+  </header>
+  <main>
+    <form id="settings-form" class="form-grid" onsubmit="event.preventDefault();">
+      <h2>Radarr</h2>
+      <div>
+        <label for="radarr_url">URL</label>
+        <input type="text" id="radarr_url" placeholder="http://localhost:7878" />
+      </div>
+      <div>
+        <label for="radarr_api_key">API key</label>
+        <input type="password" id="radarr_api_key" autocomplete="off" />
+      </div>
+
+      <h2>Sonarr</h2>
+      <div>
+        <label for="sonarr_url">URL</label>
+        <input type="text" id="sonarr_url" placeholder="http://localhost:8989" />
+      </div>
+      <div>
+        <label for="sonarr_api_key">API key</label>
+        <input type="password" id="sonarr_api_key" autocomplete="off" />
+      </div>
+
+      <h2>Plex <span style="color:var(--muted); font-weight:normal; font-size:13px;">(optional)</span></h2>
+      <div>
+        <label for="plex_url">URL</label>
+        <input type="text" id="plex_url" placeholder="http://localhost:32400" />
+      </div>
+      <div>
+        <label for="plex_token">X-Plex-Token — <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/" target="_blank" rel="noopener" style="color:var(--accent)">how to find it</a></label>
+        <input type="password" id="plex_token" autocomplete="off" />
+      </div>
+
+      <h2>TMDB</h2>
+      <div>
+        <label for="tmdb_api_key">TMDB API key (v3) — <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent)">get one</a></label>
+        <input type="password" id="tmdb_api_key" autocomplete="off" />
+      </div>
+      <div>
+        <label for="region">Region</label>
+        <select id="region"></select>
+      </div>
+
+      <h2>Streaming providers to flag</h2>
+      <div class="full">
+        <div id="provider-grid" class="provider-grid">
+          <span class="status">Save your TMDB key and region first, then refresh the provider list.</span>
+        </div>
+        <div style="margin-top:8px;">
+          <button id="refresh-providers" type="button">Refresh provider list</button>
+        </div>
+      </div>
+
+      <div class="full" style="display:flex; gap:10px; align-items:center;">
+        <button id="save" type="button" class="primary">Save</button>
+        <button id="test" type="button">Test connections</button>
+        <span class="status" id="save-status"></span>
+      </div>
+    </form>
+  </main>
+
+  <div id="toast" class="toast" style="display:none"></div>
+  <script src="/static/settings.js"></script>
+</body>
+</html>
