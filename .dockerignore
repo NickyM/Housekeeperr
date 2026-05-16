@@ -27,7 +27,9 @@ Thumbs.db
 .env.local
 docker-compose.override.yml
 
-# Docs not needed inside the image
+# Docs and build-time assets not needed inside the image
 README.md
 truenas/
 run.bat
+scripts/
+.github/

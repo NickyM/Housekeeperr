@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Housekeeperr">
+  <title>Housekeeperr</title>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M256 96 L96 232 L96 408 Q96 424 112 424 L400 424 Q416 424 416 408 L416 232 Z" fill="#4d9cf6"/>
+  <path d="M218 268 L340 332 L218 396 Z" fill="#0f172a"/>
+</svg>

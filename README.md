@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/favicon.svg" alt="Housekeeperr logo" width="128" height="128" />
+</p>
+
 # Housekeeperr
 
 Self-hosted web app that scans your **Radarr** and **Sonarr** libraries,
