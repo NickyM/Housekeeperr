@@ -3,7 +3,7 @@
 Self-hosted web app that scans Radarr/Sonarr libraries, cross-references
 streaming availability via TMDB, and tracks Plex watch state. Lists cleanup
 candidates with bulk ignore/delete. Repo: `github.com/NickyM/Housekeeperr`,
-license: **GPL v3**.
+license: **MIT**.
 
 ## Stack
 

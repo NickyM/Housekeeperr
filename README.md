@@ -215,8 +215,6 @@ without a usable ID will simply show no watched tag.
 
 ## License
 
-[GPL v3](LICENSE) — free to use, modify, and redistribute, but any forked or
-modified version that you distribute must also be released under GPL v3. No
-warranty.
+[MIT](LICENSE) — do what you want; keep the copyright notice; no warranty.
 
-Copyright (C) 2026 NickyM
+Copyright (c) 2026 NickyM
