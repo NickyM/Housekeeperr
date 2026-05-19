@@ -115,6 +115,25 @@ class SonarrClient:
             r.raise_for_status()
             return r.json()
 
+    async def set_episodes_monitored(self, episode_ids: list[int],
+                                      monitored: bool) -> int:
+        """Bulk-set the monitored flag on episodes. Returns count updated."""
+        if not episode_ids:
+            return 0
+        async with httpx.AsyncClient(timeout=self.timeout) as c:
+            r = await c.put(
+                f"{self.base}/api/v3/episode/monitor",
+                headers={**self._headers(), "Content-Type": "application/json"},
+                json={"episodeIds": episode_ids, "monitored": monitored},
+            )
+            if r.status_code < 400:
+                return len(episode_ids)
+            # Some Sonarr builds use POST or a different path; we don't bother
+            # to fall back since /episode/monitor has been the v3 API since 2020.
+            raise ArrError(
+                f"Sonarr monitor toggle failed: {r.status_code} {r.text}"
+            )
+
     async def delete_episode_files(self, file_ids: list[int]) -> int:
         """Delete the given episode files. Returns count of successful deletes."""
         if not file_ids:

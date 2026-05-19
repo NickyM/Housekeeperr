@@ -33,6 +33,9 @@ with bulk ignore / delete.
   if multiple).
 - ✅ Per-item **Ignore** (persistent — survives rescans and re-additions) and
   **Delete** (calls Radarr/Sonarr's DELETE endpoint with `deleteFiles=true`).
+  For TV shows, you can choose to delete only the *watched* episode files
+  instead of the whole series; the affected episodes are then **unmonitored**
+  in Sonarr so it doesn't re-acquire them.
 - 📦 **Select mode** for bulk ignore/delete across many items at once.
 - 🔗 Cards deep-link back into Radarr/Sonarr using each service's own
   `titleSlug`.

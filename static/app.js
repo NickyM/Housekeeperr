@@ -306,8 +306,10 @@ async function doAction(item, action, card) {
         if (item.total_episodes && item.view_count < item.total_episodes) {
           item.watched = item.view_count > 0 ? 2 : 0;
         }
+        const um = res.unmonitored_episodes || 0;
+        const umPart = um > 0 ? `, unmonitored ${um}` : "";
         toast(
-          `Deleted ${res.deleted_files || 0} episode file${res.deleted_files === 1 ? "" : "s"} from "${item.title}"`,
+          `Deleted ${res.deleted_files || 0} episode file${res.deleted_files === 1 ? "" : "s"}${umPart} for "${item.title}"`,
           "ok"
         );
         render();

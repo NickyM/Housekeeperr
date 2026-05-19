@@ -109,17 +109,36 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
 
     sonarr_eps = await sonarr.list_episodes(source_id)
     file_ids: set[int] = set()
+    episode_ids: set[int] = set()
     matched_eps = 0
     for ep in sonarr_eps:
         key = (int(ep.get("seasonNumber") or -1), int(ep.get("episodeNumber") or -1))
         if key not in watched_keys:
             continue
         fid = int(ep.get("episodeFileId") or 0)
+        eid = int(ep.get("id") or 0)
         if fid > 0 and ep.get("hasFile"):
             file_ids.add(fid)
+            if eid > 0:
+                episode_ids.add(eid)
             matched_eps += 1
     deleted = await sonarr.delete_episode_files(sorted(file_ids))
-    return {"deleted_files": deleted, "deleted_episodes": matched_eps}
+    # Unmonitor the deleted episodes so Sonarr doesn't re-acquire them.
+    unmonitored = 0
+    if episode_ids:
+        try:
+            unmonitored = await sonarr.set_episodes_monitored(
+                sorted(episode_ids), monitored=False
+            )
+        except Exception:
+            # The file delete succeeded; surface the partial failure via the
+            # count but don't fail the whole operation.
+            unmonitored = 0
+    return {
+        "deleted_files": deleted,
+        "deleted_episodes": matched_eps,
+        "unmonitored_episodes": unmonitored,
+    }
 
 VERSION = "0.1.1"
 
