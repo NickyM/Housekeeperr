@@ -140,7 +140,7 @@ async def _delete_watched_episodes_for(source_id: int) -> dict[str, Any]:
         "unmonitored_episodes": unmonitored,
     }
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 db.init()
 
